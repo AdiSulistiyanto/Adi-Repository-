@@ -1,0 +1,126 @@
+rm(list=ls())
+library(class)
+library(dplyr)
+library(MASS)
+library(tidyverse)
+setwd("~/Documents/R Data Sets")
+
+BrandChoice <- read.csv('BrandChoice.csv')
+
+# Convert inigers to numeric variables.
+BrandChoice$Income <- as.numeric(BrandChoice$Income)
+BrandChoice$Age <- as.numeric(BrandChoice$Age)
+
+str(BrandChoice)
+
+# Find total number of observations
+n <- NROW(BrandChoice)
+# Create a vector allocating each observation to train or test
+train_or_test <- ifelse(runif(n)<0.7,'Train','Test')
+# Add to Brand Choice data frame
+BrandChoice_TT <- add_column(BrandChoice, Sample=train_or_test)
+# Isolate the training data
+train <- filter(BrandChoice_TT, Sample == 'Train')
+# Isolate the test data
+test <- filter(BrandChoice_TT, Sample == 'Test')
+
+# Rmove the sample variable from test and train
+train <- dplyr::select(train, Brand, Income, Age)
+test <- dplyr::select(test, -Sample)
+
+# Create train_x and standardise it
+train_x <- dplyr::select(train,-Brand,)%>%scale()
+
+# Read out the mean and standard deviation
+mean_train_x <- attr(x = train_x, which = "scaled:center")
+std_train_x <- attr(x = train_x, which = "scaled:scale")
+
+# Create text_x and standardise it using values from train
+test_x <- dplyr::select(test,-Brand,)%>%
+scale(center = mean_train_x, scale = std_train_x)
+
+# Create train y and test y
+train_y <- pull(train, Brand)
+test_y <- pull(test, Brand)
+
+# Compute knn with k = 3
+knnpred_k3 <- knn(train_x, test_x, train_y, k=3)
+print(knnpred_k3)
+# Compute misscaculation rate
+mean(knnpred_k3!=test_y)
+
+# Compute knn with k = 13
+knnpred_k13 <- knn(train_x, test_x, train_y, k=13)
+print(knnpred_k13)
+# Compute misscaculation rate
+mean(knnpred_k13!=test_y)
+
+# Compute LDA
+ldaout <- MASS::lda(Brand~., data = train)
+ldapred <- predict(ldaout, newdata = test)
+print(ldapred)
+
+# Compute QDA
+qdaout <- MASS::qda(Brand~., data = train)
+qdapred <- predict(qdaout, test)
+print(qdapred)
+
+# Compare the missclassification rates
+mean(knnpred_k3!=test_y)
+mean(knnpred_k13!=test_y)
+mean(ldapred$class!=test$Brand)
+mean(qdapred$class!=test$Brand)
+
+# Cross tabulations
+table(knnpred_k3, test_y)
+table(knnpred_k13, test_y)
+table(ldapred$class, test$Brand)
+table(qdapred$class, test$Brand)
+
+# Check assumptions for DA
+
+# 1. Normality
+#8. What other assumption is required for LDA or QDA to theoretically minimise misclassification rate?
+#  Think of a way to do a quick visual check of whether this assumption holds.
+#Both LDA and QDA are only optimal under normality
+
+BrandChoice%>%
+  gather(key = Variable, value = Value,-Brand)%>%
+  ggplot(aes(x=Value,col=Brand))+geom_density()+facet_wrap(~Variable,nrow = 4,scales = 'free')+
+  labs(title = 'Normality Check for Predictors in Each Class' )
+
+# Under what assumptions would QDA theoretically be better than LDA. Investigate whether this
+# assumption holds.
+#QDA is better if the variance covariance matrices are different for
+#different groups
+BrandChoice%>%
+  group_by(Brand)%>%
+  summarise_all(var)->Variances
+
+
+  
+
+
+
+# Visualise
+# Trian Data
+ggplot(train, aes(x = Income, y = Age, color = Brand))+
+  geom_point()+labs(title = 'Train Data')
+
+# Test Data
+ggplot(test, aes(x = Income, y = Age, color = Brand))+
+  geom_point()+labs(title = 'Test Data')
+
+# KNN_K3 Predictions
+knnpred_k3_dataframe <- dplyr::select(test, -Brand)%>%
+  add_column(Brand = knnpred_k3)
+
+ggplot(knnpred_k3_dataframe, aes(x = Income, y = Age, color = Brand))+
+  geom_point()+labs(title = 'KNNpred_K3')
+
+# KNN_K13 Predictions
+knnpred_k13_dataframe <- dplyr::select(test, -Brand)%>%
+  add_column(Brand = knnpred_k13)
+
+ggplot(knnpred_k13_dataframe, aes(x = Income, y = Age, color = Brand))+
+  geom_point()+labs(title = 'KNNpred_K13')
